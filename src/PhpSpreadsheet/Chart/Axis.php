@@ -192,7 +192,7 @@ class Axis extends Properties
      * @param string $position
      * @param int $delete
      */
-    public function setAxisOptionsProperties($axis_labels, $horizontal_crosses_value = null, $horizontal_crosses = null, $axis_orientation = null, $major_tmt = null, $minor_tmt = null, $minimum = null, $maximum = null, $major_unit = null, $minor_unit = null, $position = null, $delete = null)
+    public function setAxisOptionsProperties($axis_labels, $horizontal_crosses_value = null, $horizontal_crosses = null, $axis_orientation = null, $major_tmt = null, $minor_tmt = null, $minimum = null, $maximum = null, $major_unit = null, $minor_unit = null, $position = null, $delete = null): void
     {
         $this->axisOptions['axis_labels'] = (string) $axis_labels;
         ($horizontal_crosses_value !== null) ? $this->axisOptions['horizontal_crosses_value'] = (string) $horizontal_crosses_value : null;
@@ -226,7 +226,7 @@ class Axis extends Properties
      *
      * @param string $orientation
      */
-    public function setAxisOrientation($orientation)
+    public function setAxisOrientation($orientation): void
     {
         $this->axisOptions['orientation'] = (string) $orientation;
     }
@@ -238,7 +238,7 @@ class Axis extends Properties
      * @param int $alpha
      * @param string $type
      */
-    public function setFillParameters($color, $alpha = 0, $type = self::EXCEL_COLOR_TYPE_ARGB)
+    public function setFillParameters($color, $alpha = 0, $type = self::EXCEL_COLOR_TYPE_ARGB): void
     {
         $this->fillProperties = $this->setColorProperties($color, $alpha, $type);
     }
@@ -250,7 +250,7 @@ class Axis extends Properties
      * @param int $alpha
      * @param string $type
      */
-    public function setLineParameters($color, $alpha = 0, $type = self::EXCEL_COLOR_TYPE_ARGB)
+    public function setLineParameters($color, $alpha = 0, $type = self::EXCEL_COLOR_TYPE_ARGB): void
     {
         $this->lineProperties = $this->setColorProperties($color, $alpha, $type);
     }
@@ -292,7 +292,7 @@ class Axis extends Properties
      * @param string $end_arrow_type
      * @param string $end_arrow_size
      */
-    public function setLineStyleProperties($line_width = null, $compound_type = null, $dash_type = null, $cap_type = null, $join_type = null, $head_arrow_type = null, $head_arrow_size = null, $end_arrow_type = null, $end_arrow_size = null)
+    public function setLineStyleProperties($line_width = null, $compound_type = null, $dash_type = null, $cap_type = null, $join_type = null, $head_arrow_type = null, $head_arrow_size = null, $end_arrow_type = null, $end_arrow_size = null): void
     {
         ($line_width !== null) ? $this->lineStyleProperties['width'] = $this->getExcelPointsWidth((float) $line_width) : null;
         ($compound_type !== null) ? $this->lineStyleProperties['compound'] = (string) $compound_type : null;
@@ -352,7 +352,7 @@ class Axis extends Properties
      * @param int $sh_angle
      * @param float $sh_distance
      */
-    public function setShadowProperties($sh_presets, $sh_color_value = null, $sh_color_type = null, $sh_color_alpha = null, $sh_blur = null, $sh_angle = null, $sh_distance = null)
+    public function setShadowProperties($sh_presets, $sh_color_value = null, $sh_color_type = null, $sh_color_alpha = null, $sh_blur = null, $sh_angle = null, $sh_distance = null): void
     {
         $this->setShadowPresetsProperties((int) $sh_presets)
             ->setShadowColor(
@@ -370,7 +370,7 @@ class Axis extends Properties
      *
      * @param int $shadow_presets
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowPresetsProperties($shadow_presets)
     {
@@ -381,12 +381,11 @@ class Axis extends Properties
     }
 
     /**
-     * Set Shadow Properties from Maped Values.
+     * Set Shadow Properties from Mapped Values.
      *
-     * @param array $properties_map
-     * @param * $reference
+     * @param mixed &$reference
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowProperiesMapValues(array $properties_map, &$reference = null)
     {
@@ -418,7 +417,7 @@ class Axis extends Properties
      * @param int $alpha
      * @param string $type
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowColor($color, $alpha, $type)
     {
@@ -432,7 +431,7 @@ class Axis extends Properties
      *
      * @param float $blur
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowBlur($blur)
     {
@@ -448,7 +447,7 @@ class Axis extends Properties
      *
      * @param int $angle
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowAngle($angle)
     {
@@ -464,7 +463,7 @@ class Axis extends Properties
      *
      * @param float $distance
      *
-     * @return Axis
+     * @return $this
      */
     private function setShadowDistance($distance)
     {
@@ -495,7 +494,7 @@ class Axis extends Properties
      * @param int $color_alpha
      * @param string $color_type
      */
-    public function setGlowProperties($size, $color_value = null, $color_alpha = null, $color_type = null)
+    public function setGlowProperties($size, $color_value = null, $color_alpha = null, $color_type = null): void
     {
         $this->setGlowSize($size)
             ->setGlowColor(
@@ -522,7 +521,7 @@ class Axis extends Properties
      *
      * @param float $size
      *
-     * @return Axis
+     * @return $this
      */
     private function setGlowSize($size)
     {
@@ -540,7 +539,7 @@ class Axis extends Properties
      * @param int $alpha
      * @param string $type
      *
-     * @return Axis
+     * @return $this
      */
     private function setGlowColor($color, $alpha, $type)
     {
@@ -554,7 +553,7 @@ class Axis extends Properties
      *
      * @param float $size
      */
-    public function setSoftEdges($size)
+    public function setSoftEdges($size): void
     {
         if ($size !== null) {
             $softEdges['size'] = (string) $this->getExcelPointsWidth($size);

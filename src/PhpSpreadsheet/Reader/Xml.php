@@ -2,10 +2,13 @@
 
 namespace PhpOffice\PhpSpreadsheet\Reader;
 
+use PhpOffice\PhpSpreadsheet\Cell\AddressHelper;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\DefinedName;
 use PhpOffice\PhpSpreadsheet\Document\Properties;
 use PhpOffice\PhpSpreadsheet\Reader\Security\XmlScanner;
+use PhpOffice\PhpSpreadsheet\Reader\Xml\PageSettings;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
 use PhpOffice\PhpSpreadsheet\Settings;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
@@ -41,7 +44,7 @@ class Xml extends BaseReader
      */
     public function __construct()
     {
-        $this->readFilter = new DefaultReadFilter();
+        parent::__construct();
         $this->securityScanner = XmlScanner::getInstance($this);
     }
 
@@ -49,8 +52,6 @@ class Xml extends BaseReader
      * Can the current IReader read the file?
      *
      * @param string $pFilename
-     *
-     * @throws Exception
      *
      * @return bool
      */
@@ -103,9 +104,7 @@ class Xml extends BaseReader
      *
      * @param string $pFilename
      *
-     * @throws Exception
-     *
-     * @return false|\SimpleXMLElement
+     * @return false|SimpleXMLElement
      */
     public function trySimpleXMLLoadString($pFilename)
     {
@@ -126,8 +125,6 @@ class Xml extends BaseReader
      * Reads names of the worksheets from a file, without parsing the whole file to a Spreadsheet object.
      *
      * @param string $pFilename
-     *
-     * @throws Exception
      *
      * @return array
      */
@@ -157,8 +154,6 @@ class Xml extends BaseReader
      * Return worksheet info (Name, Last Column Letter, Last Column Index, Total Rows, Total Columns).
      *
      * @param string $pFilename
-     *
-     * @throws Exception
      *
      * @return array
      */
@@ -229,8 +224,6 @@ class Xml extends BaseReader
      *
      * @param string $pFilename
      *
-     * @throws Exception
-     *
      * @return Spreadsheet
      */
     public function load($pFilename)
@@ -285,9 +278,8 @@ class Xml extends BaseReader
     {
         $pixels = ($widthUnits / 256) * 7;
         $offsetWidthUnits = $widthUnits % 256;
-        $pixels += round($offsetWidthUnits / (256 / 7));
 
-        return $pixels;
+        return $pixels + round($offsetWidthUnits / (256 / 7));
     }
 
     protected static function hex2str($hex)
@@ -299,9 +291,6 @@ class Xml extends BaseReader
      * Loads from file into Spreadsheet instance.
      *
      * @param string $pFilename
-     * @param Spreadsheet $spreadsheet
-     *
-     * @throws Exception
      *
      * @return Spreadsheet
      */
@@ -413,8 +402,10 @@ class Xml extends BaseReader
         foreach ($xml_ss->Worksheet as $worksheet) {
             $worksheet_ss = $worksheet->attributes($namespaces['ss']);
 
-            if ((isset($this->loadSheetsOnly)) && (isset($worksheet_ss['Name'])) &&
-                (!in_array($worksheet_ss['Name'], $this->loadSheetsOnly))) {
+            if (
+                (isset($this->loadSheetsOnly)) && (isset($worksheet_ss['Name'])) &&
+                (!in_array($worksheet_ss['Name'], $this->loadSheetsOnly))
+            ) {
                 continue;
             }
 
@@ -427,6 +418,20 @@ class Xml extends BaseReader
                 //        formula cells... during the load, all formulae should be correct, and we're simply bringing
                 //        the worksheet name in line with the formula, not the reverse
                 $spreadsheet->getActiveSheet()->setTitle($worksheetName, false, false);
+            }
+
+            // locally scoped defined names
+            if (isset($worksheet->Names[0])) {
+                foreach ($worksheet->Names[0] as $definedName) {
+                    $definedName_ss = $definedName->attributes($namespaces['ss']);
+                    $name = (string) $definedName_ss['Name'];
+                    $definedValue = (string) $definedName_ss['RefersTo'];
+                    $convertedValue = AddressHelper::convertFormulaToA1($definedValue);
+                    if ($convertedValue[0] === '=') {
+                        $convertedValue = substr($convertedValue, 1);
+                    }
+                    $spreadsheet->addDefinedName(DefinedName::createInstance($name, $spreadsheet->getActiveSheet(), $convertedValue, true));
+                }
             }
 
             $columnID = 'A';
@@ -530,7 +535,7 @@ class Xml extends BaseReader
                                         break;
                                     case 'DateTime':
                                         $type = DataType::TYPE_NUMERIC;
-                                        $cellValue = Date::PHPToExcel(strtotime($cellValue));
+                                        $cellValue = Date::PHPToExcel(strtotime($cellValue . ' UTC'));
 
                                         break;
                                     case 'Error':
@@ -543,58 +548,7 @@ class Xml extends BaseReader
                             if ($hasCalculatedValue) {
                                 $type = DataType::TYPE_FORMULA;
                                 $columnNumber = Coordinate::columnIndexFromString($columnID);
-                                if (substr($cellDataFormula, 0, 3) == 'of:') {
-                                    $cellDataFormula = substr($cellDataFormula, 3);
-                                    $temp = explode('"', $cellDataFormula);
-                                    $key = false;
-                                    foreach ($temp as &$value) {
-                                        //    Only replace in alternate array entries (i.e. non-quoted blocks)
-                                        if ($key = !$key) {
-                                            $value = str_replace(['[.', '.', ']'], '', $value);
-                                        }
-                                    }
-                                } else {
-                                    //    Convert R1C1 style references to A1 style references (but only when not quoted)
-                                    $temp = explode('"', $cellDataFormula);
-                                    $key = false;
-                                    foreach ($temp as &$value) {
-                                        //    Only replace in alternate array entries (i.e. non-quoted blocks)
-                                        if ($key = !$key) {
-                                            preg_match_all('/(R(\[?-?\d*\]?))(C(\[?-?\d*\]?))/', $value, $cellReferences, PREG_SET_ORDER + PREG_OFFSET_CAPTURE);
-                                            //    Reverse the matches array, otherwise all our offsets will become incorrect if we modify our way
-                                            //        through the formula from left to right. Reversing means that we work right to left.through
-                                            //        the formula
-                                            $cellReferences = array_reverse($cellReferences);
-                                            //    Loop through each R1C1 style reference in turn, converting it to its A1 style equivalent,
-                                            //        then modify the formula to use that new reference
-                                            foreach ($cellReferences as $cellReference) {
-                                                $rowReference = $cellReference[2][0];
-                                                //    Empty R reference is the current row
-                                                if ($rowReference == '') {
-                                                    $rowReference = $rowID;
-                                                }
-                                                //    Bracketed R references are relative to the current row
-                                                if ($rowReference[0] == '[') {
-                                                    $rowReference = $rowID + trim($rowReference, '[]');
-                                                }
-                                                $columnReference = $cellReference[4][0];
-                                                //    Empty C reference is the current column
-                                                if ($columnReference == '') {
-                                                    $columnReference = $columnNumber;
-                                                }
-                                                //    Bracketed C references are relative to the current column
-                                                if ($columnReference[0] == '[') {
-                                                    $columnReference = $columnNumber + trim($columnReference, '[]');
-                                                }
-                                                $A1CellReference = Coordinate::stringFromColumnIndex($columnReference) . $rowReference;
-                                                $value = substr_replace($value, $A1CellReference, $cellReference[0][1], strlen($cellReference[0][0]));
-                                            }
-                                        }
-                                    }
-                                }
-                                unset($value);
-                                //    Then rebuild the formula string
-                                $cellDataFormula = implode('"', $temp);
+                                $cellDataFormula = AddressHelper::convertFormulaToA1($cellDataFormula, $rowID, $columnNumber);
                             }
 
                             $spreadsheet->getActiveSheet()->getCell($columnID . $rowID)->setValueExplicit((($hasCalculatedValue) ? $cellDataFormula : $cellValue), $type);
@@ -640,8 +594,28 @@ class Xml extends BaseReader
 
                     ++$rowID;
                 }
+
+                $xmlX = $worksheet->children($namespaces['x']);
+                if (isset($xmlX->WorksheetOptions)) {
+                    (new PageSettings($xmlX, $namespaces))->loadPageSettings($spreadsheet);
+                }
             }
             ++$worksheetID;
+        }
+
+        // Globally scoped defined names
+        $activeWorksheet = $spreadsheet->setActiveSheetIndex(0);
+        if (isset($xml->Names[0])) {
+            foreach ($xml->Names[0] as $definedName) {
+                $definedName_ss = $definedName->attributes($namespaces['ss']);
+                $name = (string) $definedName_ss['Name'];
+                $definedValue = (string) $definedName_ss['RefersTo'];
+                $convertedValue = AddressHelper::convertFormulaToA1($definedValue);
+                if ($convertedValue[0] === '=') {
+                    $convertedValue = substr($convertedValue, 1);
+                }
+                $spreadsheet->addDefinedName(DefinedName::createInstance($name, $activeWorksheet, $convertedValue));
+            }
         }
 
         // Return
@@ -666,11 +640,7 @@ class Xml extends BaseReader
         return $value;
     }
 
-    /**
-     * @param SimpleXMLElement $xml
-     * @param array $namespaces
-     */
-    private function parseStyles(SimpleXMLElement $xml, array $namespaces)
+    private function parseStyles(SimpleXMLElement $xml, array $namespaces): void
     {
         if (!isset($xml->Styles)) {
             return;
@@ -710,9 +680,8 @@ class Xml extends BaseReader
 
     /**
      * @param string $styleID
-     * @param SimpleXMLElement $styleAttributes
      */
-    private function parseStyleAlignment($styleID, SimpleXMLElement $styleAttributes)
+    private function parseStyleAlignment($styleID, SimpleXMLElement $styleAttributes): void
     {
         $verticalAlignmentStyles = [
             Alignment::VERTICAL_BOTTOM,
@@ -754,10 +723,8 @@ class Xml extends BaseReader
 
     /**
      * @param $styleID
-     * @param SimpleXMLElement $styleData
-     * @param array $namespaces
      */
-    private function parseStyleBorders($styleID, SimpleXMLElement $styleData, array $namespaces)
+    private function parseStyleBorders($styleID, SimpleXMLElement $styleData, array $namespaces): void
     {
         foreach ($styleData->Border as $borderStyle) {
             $borderAttributes = $borderStyle->attributes($namespaces['ss']);
@@ -791,9 +758,8 @@ class Xml extends BaseReader
 
     /**
      * @param $styleID
-     * @param SimpleXMLElement $styleAttributes
      */
-    private function parseStyleFont($styleID, SimpleXMLElement $styleAttributes)
+    private function parseStyleFont($styleID, SimpleXMLElement $styleAttributes): void
     {
         $underlineStyles = [
             Font::UNDERLINE_NONE,
@@ -838,9 +804,8 @@ class Xml extends BaseReader
 
     /**
      * @param $styleID
-     * @param SimpleXMLElement $styleAttributes
      */
-    private function parseStyleInterior($styleID, SimpleXMLElement $styleAttributes)
+    private function parseStyleInterior($styleID, SimpleXMLElement $styleAttributes): void
     {
         foreach ($styleAttributes as $styleAttributeKey => $styleAttributeValue) {
             switch ($styleAttributeKey) {
@@ -858,9 +823,8 @@ class Xml extends BaseReader
 
     /**
      * @param $styleID
-     * @param SimpleXMLElement $styleAttributes
      */
-    private function parseStyleNumberFormat($styleID, SimpleXMLElement $styleAttributes)
+    private function parseStyleNumberFormat($styleID, SimpleXMLElement $styleAttributes): void
     {
         $fromFormats = ['\-', '\ '];
         $toFormats = ['-', ' '];
